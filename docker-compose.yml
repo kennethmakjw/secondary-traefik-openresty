@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  secondary-traefik:
+    image: traefik:v3.1
+    container_name: secondary-traefik
+    ports:
+      - "10.0.0.22:80:80"
+      - "10.0.0.22:443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /opt/secondary-traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - /opt/secondary-traefik/dynamic:/etc/traefik/dynamic
+      - /opt/secondary-traefik/acme.json:/acme.json
+    environment:
+      - TRAEFIK_ACME_EMAIL=${TRAEFIK_ACME_EMAIL}
+    command:
+      - --api.insecure=true
+      - --providers.docker=true
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.email=${TRAEFIK_ACME_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+    networks:
+      - proxy-network
+    labels:
+      - traefik.enable=false
+    restart: unless-stopped
+
+  openresty:
+    image: openresty/openresty:1.25.3.1-jammy
+    container_name: openresty
+    volumes:
+      - /opt/secondary-traefik/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
+      - /opt/secondary-traefik/cache:/var/cache/nginx
+      - /etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro
+    networks:
+      - proxy-network
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.openresty.rule=HostRegexp(`{host:.+}`)
+      - traefik.http.routers.openresty.entrypoints=websecure
+      - traefik.http.routers.openresty.tls=true
+      - traefik.http.routers.openresty.tls.certresolver=letsencrypt
+      - traefik.http.services.openresty.loadbalancer.server.port=80
+    restart: unless-stopped
+
+networks:
+  proxy-network:
+    name: proxy-network

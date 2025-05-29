@@ -1,0 +1,15 @@
+http:
+  routers:
+    secondary-traefik:
+      rule: "HostRegexp(`{host:.+}`)"
+      service: secondary-traefik
+      entryPoints:
+        - web
+        - websecure
+      tls:
+        certresolver: letsencrypt
+  services:
+    secondary-traefik:
+      loadBalancer:
+        servers:
+          - url: http://10.0.0.22:80
